@@ -41,6 +41,8 @@ add_executable(THE_RENDERER main.cpp)
 
 target_include_directories(THE_RENDERER PRIVATE
         ${Vulkan_INCLUDE_DIRS}
+        ${glfw_SOURCE_DIR}/include        # <-- ADD THIS
+        ${glm_SOURCE_DIR}                 # <-- ADD THIS (optional but recommended)
 )
 
 target_link_libraries(THE_RENDERER PRIVATE
