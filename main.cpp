@@ -278,12 +278,44 @@ int main() {
               << (chosenPresentMode == VK_PRESENT_MODE_MAILBOX_KHR ? "Mailbox" : "FIFO")
               << " | Extent: " << extent.width << "x" << extent.height << std::endl;
 
+    // Get swap chain images
+    uint32_t swapImageCount;
+    vkGetSwapchainImagesKHR(device, swapchain, &swapImageCount, nullptr);
+    std::vector<VkImage> swapImages(swapImageCount);
+    vkGetSwapchainImagesKHR(device, swapchain, &swapImageCount, swapImages.data());
+
+    // Create image views
+    std::vector<VkImageView> swapImageViews(swapImageCount);
+    for (size_t i = 0; i < swapImageCount; i++) {
+        VkImageViewCreateInfo viewInfo{};
+        viewInfo.sType                           = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        viewInfo.image                           = swapImages[i];
+        viewInfo.viewType                        = VK_IMAGE_VIEW_TYPE_2D;
+        viewInfo.format                          = chosenFormat.format;
+        viewInfo.components.r                    = VK_COMPONENT_SWIZZLE_IDENTITY;
+        viewInfo.components.g                    = VK_COMPONENT_SWIZZLE_IDENTITY;
+        viewInfo.components.b                    = VK_COMPONENT_SWIZZLE_IDENTITY;
+        viewInfo.components.a                    = VK_COMPONENT_SWIZZLE_IDENTITY;
+        viewInfo.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        viewInfo.subresourceRange.baseMipLevel   = 0;
+        viewInfo.subresourceRange.levelCount     = 1;
+        viewInfo.subresourceRange.baseArrayLayer = 0;
+        viewInfo.subresourceRange.layerCount     = 1;
+
+        if (vkCreateImageView(device, &viewInfo, nullptr, &swapImageViews[i]) != VK_SUCCESS)
+            throw std::runtime_error("Failed to create image view " + std::to_string(i));
+    }
+
+    std::cout << "Image views created: " << swapImageCount << std::endl;
+
     // Main loop
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
     }
 
     // Cleanup
+    for (auto view : swapImageViews)
+        vkDestroyImageView(device, view, nullptr);
     vkDestroySwapchainKHR(device, swapchain, nullptr);
     vkDestroySurfaceKHR(instance, surface, nullptr);
     vkDestroyDevice(device, nullptr);
