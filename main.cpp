@@ -1,3 +1,5 @@
+#define VMA_IMPLEMENTATION
+#include <vk_mem_alloc.h>
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 #include <iostream>
@@ -8,6 +10,42 @@
 #include <fstream>
 #include <optional>
 #include <set>
+#include <array>
+#include <glm/glm.hpp>
+
+
+struct Vertex {
+    glm::vec2 pos;
+    glm::vec3 color;
+
+    static VkVertexInputBindingDescription getBindingDescription() {
+        VkVertexInputBindingDescription binding{};
+        binding.binding = 0;
+        binding.stride = sizeof(Vertex);
+        binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        return binding;
+    }
+
+    static std::array<VkVertexInputAttributeDescription, 2> getAttributeDescriptions() {
+        std::array<VkVertexInputAttributeDescription, 2> attrs{};
+        attrs[0].binding = 0;
+        attrs[0].location = 0;
+        attrs[0].format = VK_FORMAT_R32G32_SFLOAT;
+        attrs[0].offset = offsetof(Vertex, pos);
+
+        attrs[1].binding = 0;
+        attrs[1].location = 1;
+        attrs[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+        attrs[1].offset = offsetof(Vertex, color);
+        return attrs;
+    }
+};
+
+const std::vector<Vertex> vertices = {
+    {{ 0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+    {{ 0.5f,  0.5f}, {0.0f, 1.0f, 0.0f}},
+    {{-0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}}
+};
 
 // ─── Validation Layers ────────────────────────────────────────────────────────
 #ifdef NDEBUG
@@ -482,8 +520,15 @@ int main() {
         VkPipelineShaderStageCreateInfo shaderStages[] = { vertStage, fragStage };
 
         // ─── Pipeline ─────────────────────────────────────────────────────────────
+        auto bindingDesc = Vertex::getBindingDescription();
+        auto attributeDesc = Vertex::getAttributeDescriptions();
+
         VkPipelineVertexInputStateCreateInfo vertexInput{};
         vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+        vertexInput.vertexBindingDescriptionCount = 1;
+        vertexInput.pVertexBindingDescriptions = &bindingDesc;
+        vertexInput.vertexAttributeDescriptionCount = (uint32_t)attributeDesc.size();
+        vertexInput.pVertexAttributeDescriptions = attributeDesc.data();
 
         VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
         inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
@@ -576,6 +621,38 @@ int main() {
         if (vkAllocateCommandBuffers(device, &allocInfo, commandBuffers.data()) != VK_SUCCESS)
             throw std::runtime_error("Failed to allocate command buffers");
 
+        // Vertex buffer
+        VkBufferCreateInfo bufferInfo{};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferInfo.size = sizeof(vertices[0]) * vertices.size();
+        bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        VmaAllocationCreateInfo vmaAllocInfo{};
+        vmaAllocInfo.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
+
+        // VMA allocator
+        VmaAllocatorCreateInfo allocatorInfo{};
+        allocatorInfo.physicalDevice = physicalDevice;
+        allocatorInfo.device = device;
+        allocatorInfo.instance = instance;
+
+        VmaAllocator vmaAllocator;
+        vmaCreateAllocator(&allocatorInfo, &vmaAllocator);
+
+        VkBuffer     vertexBuffer;
+        VmaAllocation vertexAllocation;
+        vmaCreateBuffer(vmaAllocator, &bufferInfo, &vmaAllocInfo,
+            &vertexBuffer, &vertexAllocation, nullptr);
+
+        // Upload vertex data
+        void* data;
+        vmaMapMemory(vmaAllocator, vertexAllocation, &data);
+        memcpy(data, vertices.data(), (size_t)bufferInfo.size);
+        vmaUnmapMemory(vmaAllocator, vertexAllocation);
+
+        std::cout << "Vertex buffer created" << std::endl;
+
         // ─── Sync Objects ─────────────────────────────────────────────────────────
         std::vector<VkSemaphore> imageAvailableSemaphores(MAX_FRAMES_IN_FLIGHT);
         std::vector<VkSemaphore> renderFinishedSemaphores(MAX_FRAMES_IN_FLIGHT);
@@ -631,7 +708,10 @@ int main() {
 
             vkCmdBeginRenderPass(cmd, &rpBegin, VK_SUBPASS_CONTENTS_INLINE);
             vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
-            vkCmdDraw(cmd, 3, 1, 0, 0);
+            VkBuffer vertexBuffers[] = { vertexBuffer };
+            VkDeviceSize offsets[] = { 0 };
+            vkCmdBindVertexBuffers(cmd, 0, 1, vertexBuffers, offsets);
+            vkCmdDraw(cmd, (uint32_t)vertices.size(), 1, 0, 0);;
             vkCmdEndRenderPass(cmd);
             vkEndCommandBuffer(cmd);
 
@@ -671,11 +751,13 @@ int main() {
             vkDestroyFence(device, inFlightFences[i], nullptr);
         }
         vkDestroyCommandPool(device, commandPool, nullptr);
+        vmaDestroyBuffer(vmaAllocator, vertexBuffer, vertexAllocation);
+        vmaDestroyAllocator(vmaAllocator);
         vkDestroyPipeline(device, graphicsPipeline, nullptr);
         vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
-        for (auto fb : framebuffers)      vkDestroyFramebuffer(device, fb, nullptr);
+        for (auto fb : framebuffers)   vkDestroyFramebuffer(device, fb, nullptr);
         vkDestroyRenderPass(device, renderPass, nullptr);
-        for (auto iv : swapImageViews)    vkDestroyImageView(device, iv, nullptr);
+        for (auto iv : swapImageViews) vkDestroyImageView(device, iv, nullptr);
         vkDestroySwapchainKHR(device, swapchain, nullptr);
         vkDestroySurfaceKHR(instance, surface, nullptr);
         vkDestroyDevice(device, nullptr);
