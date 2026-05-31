@@ -41,8 +41,37 @@ add_executable(THE_RENDERER main.cpp)
 
 target_include_directories(THE_RENDERER PRIVATE
         ${Vulkan_INCLUDE_DIRS}
-        ${glfw_SOURCE_DIR}/include        # <-- ADD THIS
-        ${glm_SOURCE_DIR}                 # <-- ADD THIS (optional but recommended)
+        ${glfw_SOURCE_DIR}/include
+        ${glm_SOURCE_DIR}
+)
+
+# Shader compilation
+find_program(GLSLC glslc HINTS D:/Vulkan/Bin)
+
+file(GLOB_RECURSE GLSL_FILES
+    ${CMAKE_SOURCE_DIR}/shaders/*.vert
+    ${CMAKE_SOURCE_DIR}/shaders/*.frag
+    ${CMAKE_SOURCE_DIR}/shaders/*.comp
+)
+
+foreach(GLSL ${GLSL_FILES})
+    get_filename_component(FILE_NAME ${GLSL} NAME)
+    set(SPIRV ${CMAKE_SOURCE_DIR}/shaders/${FILE_NAME}.spv)
+    add_custom_command(
+        OUTPUT ${SPIRV}
+        COMMAND ${GLSLC} ${GLSL} -o ${SPIRV}
+        DEPENDS ${GLSL}
+    )
+    list(APPEND SPIRV_BINARY_FILES ${SPIRV})
+endforeach()
+
+add_custom_target(Shaders DEPENDS ${SPIRV_BINARY_FILES})
+add_dependencies(THE_RENDERER Shaders)
+
+add_custom_command(TARGET THE_RENDERER POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${SPIRV_BINARY_FILES}
+        $<TARGET_FILE_DIR:THE_RENDERER>
 )
 
 target_link_libraries(THE_RENDERER PRIVATE
@@ -51,3 +80,5 @@ target_link_libraries(THE_RENDERER PRIVATE
         glm
         GPUOpen::VulkanMemoryAllocator
 )
+
+target_compile_features(THE_RENDERER PRIVATE cxx_std_20)
