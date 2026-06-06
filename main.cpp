@@ -361,7 +361,7 @@ int main() {
 
         uint32_t framesInFlight = swapImageCount;
 
-        // ─── Render Pass ──────────────────────────────────────────────────────────
+        // ─── Render Pass ──────────────────────────────────────────────────────────────
         VkAttachmentDescription colorAttachment{};
         colorAttachment.format = surfaceFormat.format;
         colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -372,19 +372,40 @@ int main() {
         colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
+        VkAttachmentDescription depthAttachment{};
+        depthAttachment.format = VK_FORMAT_D32_SFLOAT;
+        depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+        depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
         VkAttachmentReference colorRef{ 0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL };
+        VkAttachmentReference depthRef{ 1, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL };
+
         VkSubpassDescription subpass{};
         subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-        subpass.colorAttachmentCount = 1; subpass.pColorAttachments = &colorRef;
+        subpass.colorAttachmentCount = 1;
+        subpass.pColorAttachments = &colorRef;
+        subpass.pDepthStencilAttachment = &depthRef;
 
         VkSubpassDependency dep{};
         dep.srcSubpass = VK_SUBPASS_EXTERNAL; dep.dstSubpass = 0;
-        dep.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT; dep.srcAccessMask = 0;
-        dep.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT; dep.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        dep.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+            VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+        dep.srcAccessMask = 0;
+        dep.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+            VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+        dep.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+            VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 
+        std::array<VkAttachmentDescription, 2> attachments = { colorAttachment, depthAttachment };
         VkRenderPassCreateInfo rpCI{};
         rpCI.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-        rpCI.attachmentCount = 1; rpCI.pAttachments = &colorAttachment;
+        rpCI.attachmentCount = (uint32_t)attachments.size();
+        rpCI.pAttachments = attachments.data();
         rpCI.subpassCount = 1; rpCI.pSubpasses = &subpass;
         rpCI.dependencyCount = 1; rpCI.pDependencies = &dep;
 
@@ -392,15 +413,106 @@ int main() {
         if (vkCreateRenderPass(device, &rpCI, nullptr, &renderPass) != VK_SUCCESS)
             throw std::runtime_error("Failed to create render pass");
         std::cout << "Render pass created" << std::endl;
+        // ─── VMA Allocator ────────────────────────────────────────────────────────
+        VmaAllocatorCreateInfo allocatorCI{};
+        allocatorCI.physicalDevice = physicalDevice;
+        allocatorCI.device = device;
+        allocatorCI.instance = instance;
+        VmaAllocator vmaAllocator;
+        vmaCreateAllocator(&allocatorCI, &vmaAllocator);
+
+        // ─── Vertex Buffer ────────────────────────────────────────────────────────
+        VkBufferCreateInfo vbCI{};
+        vbCI.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        vbCI.size = sizeof(vertices[0]) * vertices.size();
+        vbCI.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+        vbCI.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        VmaAllocationCreateInfo vbAllocCI{};
+        vbAllocCI.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
+
+        VkBuffer      vertexBuffer;
+        VmaAllocation vertexAllocation;
+        vmaCreateBuffer(vmaAllocator, &vbCI, &vbAllocCI, &vertexBuffer, &vertexAllocation, nullptr);
+
+        void* vbData;
+        vmaMapMemory(vmaAllocator, vertexAllocation, &vbData);
+        memcpy(vbData, vertices.data(), (size_t)vbCI.size);
+        vmaUnmapMemory(vmaAllocator, vertexAllocation);
+        std::cout << "Vertex buffer created" << std::endl;
+
+        // ─── Uniform Buffers ──────────────────────────────────────────────────────
+        std::vector<VkBuffer>      uniformBuffers(framesInFlight);
+        std::vector<VmaAllocation> uniformAllocations(framesInFlight);
+        std::vector<void*>         uniformMapped(framesInFlight);
+
+        VkBufferCreateInfo ubCI{};
+        ubCI.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        ubCI.size = sizeof(UniformBufferObject);
+        ubCI.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+        ubCI.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        VmaAllocationCreateInfo ubAllocCI{};
+        ubAllocCI.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
+        ubAllocCI.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+        for (int i = 0; i < framesInFlight; i++) {
+            VmaAllocationInfo allocOut{};
+            vmaCreateBuffer(vmaAllocator, &ubCI, &ubAllocCI, &uniformBuffers[i], &uniformAllocations[i], &allocOut);
+            uniformMapped[i] = allocOut.pMappedData;
+        }
+        std::cout << "Uniform buffers created" << std::endl;
+
+        // ─── Depth Buffer ─────────────────────────────────────────────────────────────
+        VkFormat depthFormat = VK_FORMAT_D32_SFLOAT;
+
+        VkImageCreateInfo depthImageInfo{};
+        depthImageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        depthImageInfo.imageType = VK_IMAGE_TYPE_2D;
+        depthImageInfo.format = depthFormat;
+        depthImageInfo.extent = { extent.width, extent.height, 1 };
+        depthImageInfo.mipLevels = 1;
+        depthImageInfo.arrayLayers = 1;
+        depthImageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+        depthImageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+        depthImageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+        depthImageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        depthImageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+        VmaAllocationCreateInfo depthAllocInfo{};
+        depthAllocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+
+        VkImage       depthImage;
+        VmaAllocation depthAllocation;
+        vmaCreateImage(vmaAllocator, &depthImageInfo, &depthAllocInfo,
+            &depthImage, &depthAllocation, nullptr);
+
+        VkImageViewCreateInfo depthViewInfo{};
+        depthViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        depthViewInfo.image = depthImage;
+        depthViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        depthViewInfo.format = depthFormat;
+        depthViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+        depthViewInfo.subresourceRange.baseMipLevel = 0;
+        depthViewInfo.subresourceRange.levelCount = 1;
+        depthViewInfo.subresourceRange.baseArrayLayer = 0;
+        depthViewInfo.subresourceRange.layerCount = 1;
+
+        VkImageView depthImageView;
+        if (vkCreateImageView(device, &depthViewInfo, nullptr, &depthImageView) != VK_SUCCESS)
+            throw std::runtime_error("Failed to create depth image view");
+
+        std::cout << "Depth buffer created" << std::endl;
 
         // ─── Framebuffers ─────────────────────────────────────────────────────────
         std::vector<VkFramebuffer> framebuffers(swapImageCount);
         for (size_t i = 0; i < swapImageCount; i++) {
-            VkImageView attachments[] = { swapImageViews[i] };
+            std::array<VkImageView, 2> attachments = { swapImageViews[i], depthImageView };
             VkFramebufferCreateInfo fbCI{};
             fbCI.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
             fbCI.renderPass = renderPass;
-            fbCI.attachmentCount = 1; fbCI.pAttachments = attachments;
+            fbCI.attachmentCount = (uint32_t)attachments.size();
+            fbCI.pAttachments = attachments.data();
             fbCI.width = extent.width; fbCI.height = extent.height; fbCI.layers = 1;
             if (vkCreateFramebuffer(device, &fbCI, nullptr, &framebuffers[i]) != VK_SUCCESS)
                 throw std::runtime_error("Failed to create framebuffer");
@@ -485,6 +597,14 @@ int main() {
         colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
         colorBlending.attachmentCount = 1; colorBlending.pAttachments = &colorBlendAttachment;
 
+        VkPipelineDepthStencilStateCreateInfo depthStencil{};
+        depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+        depthStencil.depthTestEnable = VK_TRUE;
+        depthStencil.depthWriteEnable = VK_TRUE;
+        depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
+        depthStencil.depthBoundsTestEnable = VK_FALSE;
+        depthStencil.stencilTestEnable = VK_FALSE;
+
         VkPipelineLayoutCreateInfo pipelineLayoutCI{};
         pipelineLayoutCI.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
         pipelineLayoutCI.setLayoutCount = 1;
@@ -505,6 +625,7 @@ int main() {
         pipelineCI.pColorBlendState = &colorBlending;
         pipelineCI.layout = pipelineLayout;
         pipelineCI.renderPass = renderPass;
+        pipelineCI.pDepthStencilState = &depthStencil;
         pipelineCI.subpass = 0;
 
         VkPipeline graphicsPipeline;
@@ -534,55 +655,7 @@ int main() {
         if (vkAllocateCommandBuffers(device, &cbAllocInfo, commandBuffers.data()) != VK_SUCCESS)
             throw std::runtime_error("Failed to allocate command buffers");
 
-        // ─── VMA Allocator ────────────────────────────────────────────────────────
-        VmaAllocatorCreateInfo allocatorCI{};
-        allocatorCI.physicalDevice = physicalDevice;
-        allocatorCI.device = device;
-        allocatorCI.instance = instance;
-        VmaAllocator vmaAllocator;
-        vmaCreateAllocator(&allocatorCI, &vmaAllocator);
-
-        // ─── Vertex Buffer ────────────────────────────────────────────────────────
-        VkBufferCreateInfo vbCI{};
-        vbCI.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        vbCI.size = sizeof(vertices[0]) * vertices.size();
-        vbCI.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-        vbCI.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-        VmaAllocationCreateInfo vbAllocCI{};
-        vbAllocCI.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
-
-        VkBuffer      vertexBuffer;
-        VmaAllocation vertexAllocation;
-        vmaCreateBuffer(vmaAllocator, &vbCI, &vbAllocCI, &vertexBuffer, &vertexAllocation, nullptr);
-
-        void* vbData;
-        vmaMapMemory(vmaAllocator, vertexAllocation, &vbData);
-        memcpy(vbData, vertices.data(), (size_t)vbCI.size);
-        vmaUnmapMemory(vmaAllocator, vertexAllocation);
-        std::cout << "Vertex buffer created" << std::endl;
-
-        // ─── Uniform Buffers ──────────────────────────────────────────────────────
-        std::vector<VkBuffer>      uniformBuffers(framesInFlight);
-        std::vector<VmaAllocation> uniformAllocations(framesInFlight);
-        std::vector<void*>         uniformMapped(framesInFlight);
-
-        VkBufferCreateInfo ubCI{};
-        ubCI.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        ubCI.size = sizeof(UniformBufferObject);
-        ubCI.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-        ubCI.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-        VmaAllocationCreateInfo ubAllocCI{};
-        ubAllocCI.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
-        ubAllocCI.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
-
-        for (int i = 0; i < framesInFlight; i++) {
-            VmaAllocationInfo allocOut{};
-            vmaCreateBuffer(vmaAllocator, &ubCI, &ubAllocCI, &uniformBuffers[i], &uniformAllocations[i], &allocOut);
-            uniformMapped[i] = allocOut.pMappedData;
-        }
-        std::cout << "Uniform buffers created" << std::endl;
+        
 
         // ─── Descriptor Pool ──────────────────────────────────────────────────────
         VkDescriptorPoolSize dpSize{};
@@ -597,6 +670,8 @@ int main() {
         VkDescriptorPool descriptorPool;
         if (vkCreateDescriptorPool(device, &dpCI, nullptr, &descriptorPool) != VK_SUCCESS)
             throw std::runtime_error("Failed to create descriptor pool");
+
+
 
         // ─── Descriptor Sets ──────────────────────────────────────────────────────
         std::vector<VkDescriptorSetLayout> dsLayouts(framesInFlight, descriptorSetLayout);
@@ -642,6 +717,8 @@ int main() {
         }
         std::cout << "Sync objects created" << std::endl;
         std::cout << "Entering render loop..." << std::endl;
+
+
 
         // ═════════════════════════════════════════════════════════════════════════
         //  RENDER LOOP
@@ -694,8 +771,12 @@ int main() {
             rpBegin.framebuffer = framebuffers[imageIndex];
             rpBegin.renderArea.offset = { 0, 0 };
             rpBegin.renderArea.extent = extent;
-            rpBegin.clearValueCount = 1;
-            rpBegin.pClearValues = &clearColor;
+            std::array<VkClearValue, 2> clearValues{};
+            clearValues[0].color = { {0.01f, 0.01f, 0.01f, 1.0f} };
+            clearValues[1].depthStencil = { 1.0f, 0 };
+
+            rpBegin.clearValueCount = (uint32_t)clearValues.size();
+            rpBegin.pClearValues = clearValues.data();;
 
             vkCmdBeginRenderPass(cmd, &rpBegin, VK_SUBPASS_CONTENTS_INLINE);
             vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
@@ -735,6 +816,8 @@ int main() {
         vkDeviceWaitIdle(device);
 
         // ─── Cleanup (reverse order) ──────────────────────────────────────────────
+        vkDestroyImageView(device, depthImageView, nullptr);
+        vmaDestroyImage(vmaAllocator, depthImage, depthAllocation);
         for (int i = 0; i < framesInFlight; i++){
             vkDestroySemaphore(device, acquireSemaphores[i], nullptr);
         }
