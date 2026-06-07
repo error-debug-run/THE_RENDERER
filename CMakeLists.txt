@@ -37,7 +37,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(vma)
 
 # Executable
-add_executable(THE_RENDERER main.cpp "src/BVH.h" "src/BVH.cpp")
+add_executable(THE_RENDERER main.cpp "src/BVH.h" "src/BVH.cpp" "src/Renderer.h" "src/Renderer.cpp")
 
 target_include_directories(THE_RENDERER PRIVATE
         ${Vulkan_INCLUDE_DIRS}
