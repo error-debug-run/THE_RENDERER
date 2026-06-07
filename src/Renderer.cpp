@@ -788,3 +788,4 @@ std::vector< char> Renderer::readFile(const std::string& filename) {
     file.seekg(0);
     file.read(buf.data(), size);
     return buf;
+}

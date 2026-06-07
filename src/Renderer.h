@@ -149,11 +149,11 @@ private:
     void createSyncObjects();
 
     // Utilities
-    bool                    checkValidationLayerSupport() const;
+    bool                    checkValidationLayerSupport() ;
     QueueFamilyIndices      findQueueFamilies(VkPhysicalDevice dev);
     SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice dev);
-    bool                    isDeviceSuitable(VkPhysicalDevice dev) const;
-    bool                    checkDeviceExtensionSupport(VkPhysicalDevice dev) const;
+    bool                    isDeviceSuitable(VkPhysicalDevice dev) ;
+    bool                    checkDeviceExtensionSupport(VkPhysicalDevice dev) ;
     VkSurfaceFormatKHR      chooseSwapSurfaceFormat(const std::vector< VkSurfaceFormatKHR>& formats);
     VkPresentModeKHR        chooseSwapPresentMode(const std::vector< VkPresentModeKHR>& modes);
     VkExtent2D              chooseSwapExtent(const VkSurfaceCapabilitiesKHR& cap);
