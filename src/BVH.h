@@ -22,7 +22,8 @@ struct AABB {
 
     bool intersectRay(const glm::vec3& origin,
         const glm::vec3& invDir,
-        float tMin, float tMax) const;
+        float tMin, float tMax,
+        float& tHit) const;
 };
 
 // ─── BVH Node ─────────────────────────────────────────────────────────────────

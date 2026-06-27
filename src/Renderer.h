@@ -11,6 +11,9 @@
 #include <string>
 #include <array>
 #include <set>
+#include "Scene.h"
+
+
 
 // ─── Vertex ───────────────────────────────────────────────────────────────────
 struct Vertex {
@@ -62,10 +65,12 @@ struct SwapChainSupportDetails {
 class Renderer {
 public:
     void init(GLFWwindow* window);
-    void drawFrame(float time);
+    void drawFrame(const Scene& world);
     void cleanup();
 
 private:
+
+
     GLFWwindow* window = nullptr;
 
     // Core Vulkan
@@ -126,6 +131,8 @@ private:
     std::vector< VkFence>     inFlightFences;
 
     uint32_t currentFrame = 0;
+
+    static constexpr uint32_t MAX_ENTITIES = 1000;
 
     // Init helpers
     void createInstance();

@@ -5,7 +5,8 @@
 // ─── AABB ─────────────────────────────────────────────────────────────────────
 bool AABB::intersectRay(const glm::vec3& origin,
     const glm::vec3& invDir,
-    float tMin, float tMax) const
+    float tMin, float tMax,
+    float& tHit) const  // ← add tHit output
 {
     for (int i = 0; i < 3; i++) {
         float t0 = (min[i] - origin[i]) * invDir[i];
@@ -15,6 +16,7 @@ bool AABB::intersectRay(const glm::vec3& origin,
         tMax = std::min(tMax, t1);
         if (tMax < tMin) return false;
     }
+    tHit = tMin;  // ← actual hit distance
     return true;
 }
 
@@ -121,23 +123,23 @@ void BVH::queryRayRecursive(int nodeIdx,
 {
     const BVHNode& node = m_nodes[nodeIdx];
 
-    if (!node.bounds.intersectRay(origin, invDir, tMin, tMax))
+    float tHit;
+    if (!node.bounds.intersectRay(origin, invDir, tMin, tMax, tHit))
         return;
 
+    // Early exit — this node can't beat current best
+    if (tHit >= best.t) return;
+
     if (node.isLeaf()) {
-        // Return the hit — caller can do precise intersection
-        if (tMin < best.t) {
-            best.hit = true;
-            best.t = tMin;
-            best.objectID = node.objectID;
-        }
+        best.hit = true;
+        best.t = tHit;
+        best.objectID = node.objectID;
         return;
     }
 
     queryRayRecursive(node.left, origin, invDir, tMin, tMax, best);
     queryRayRecursive(node.right, origin, invDir, tMin, tMax, best);
 }
-
 // ─── Sphere Query ─────────────────────────────────────────────────────────────
 void BVH::querySphere(const glm::vec3& center,
     float radius,
@@ -154,7 +156,6 @@ void BVH::querySphereRecursive(int nodeIdx,
 {
     const BVHNode& node = m_nodes[nodeIdx];
 
-    // Check if sphere overlaps AABB
     glm::vec3 closest = glm::clamp(center, node.bounds.min, node.bounds.max);
     float distSq = glm::dot(center - closest, center - closest);
     if (distSq > radius * radius) return;

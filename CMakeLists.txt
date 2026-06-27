@@ -36,13 +36,18 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(vma)
 
+# Physics Engine
+set(PHYSICS_ENGINE_PATH "D:/THE_ENGINE" CACHE PATH "D:/THE_RENDERER")
+add_subdirectory(${PHYSICS_ENGINE_PATH} ${CMAKE_BINARY_DIR}/physics)
+
 # Executable
-add_executable(THE_RENDERER main.cpp "src/BVH.h" "src/BVH.cpp" "src/Renderer.h" "src/Renderer.cpp")
+add_executable(THE_RENDERER main.cpp "src/BVH.h" "src/BVH.cpp" "src/Renderer.h" "src/Renderer.cpp" "src/Camera.h" "src/Entity.h" "src/Scene.h" "src/IDRegistry.h" "src/PhysicsInterface.h")
 
 target_include_directories(THE_RENDERER PRIVATE
         ${Vulkan_INCLUDE_DIRS}
         ${glfw_SOURCE_DIR}/include
         ${glm_SOURCE_DIR}
+        ${PHYSICS_ENGINE_PATH}/src
 )
 
 # Shader compilation
@@ -79,6 +84,7 @@ target_link_libraries(THE_RENDERER PRIVATE
         glfw
         glm
         GPUOpen::VulkanMemoryAllocator
+        THE_ENGINE
 )
 
 target_compile_features(THE_RENDERER PRIVATE cxx_std_20)

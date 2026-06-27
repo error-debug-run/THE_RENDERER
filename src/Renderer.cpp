@@ -83,12 +83,32 @@ void Renderer::init(GLFWwindow* win) {
     std::cout << "Renderer initialized" << std::endl;
 }
 
-void Renderer::drawFrame(float time) {
-    // ── Update UBO ──────────────────────────────────────────────────────────
+void Renderer::drawFrame(const Scene& scene) {
+    float aspect = (float)extent.width / (float)extent.height;
+
+    // ── build vertices from scene entities ──
+    std::vector<Vertex> verts;
+    verts.reserve(scene.entities.size());
+    for (auto& e : scene.entities) {
+        Vertex v;
+        v.pos = e.position;
+        v.color = glm::vec3(1.0f, 1.0f, 1.0f);  // white for now
+        verts.push_back(v);
+    }
+
+    // upload to vertex buffer
+    if (!verts.empty()) {
+        void* data;
+        vmaMapMemory(vmaAllocator, vertexAllocation, &data);
+        memcpy(data, verts.data(), sizeof(Vertex) * verts.size());
+        vmaUnmapMemory(vmaAllocator, vertexAllocation);
+    }
+
+    // ── UBO — model is identity, camera does the work ──
     UniformBufferObject ubo{};
-    ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    ubo.view = glm::lookAt(glm::vec3(0.0f, 0.0f, 2.0f), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-    ubo.proj = glm::perspective(glm::radians(45.0f), (float)extent.width / extent.height, 0.1f, 10.0f);
+    ubo.model = glm::mat4(1.0f);
+    ubo.view = scene.camera.view(aspect);
+    ubo.proj = scene.camera.projection(aspect);
     ubo.proj[1][1] *= -1;
     memcpy(uniformMapped[currentFrame], &ubo, sizeof(ubo));
 
@@ -128,7 +148,7 @@ void Renderer::drawFrame(float time) {
     VkBuffer     vbufs[] = { vertexBuffer };
     VkDeviceSize voffsets[] = { 0 };
     vkCmdBindVertexBuffers(cmd, 0, 1, vbufs, voffsets);
-    vkCmdDraw(cmd, (uint32_t)vertices.size(), 1, 0, 0);
+    vkCmdDraw(cmd, (uint32_t)verts.size(), 1, 0, 0);
     vkCmdEndRenderPass(cmd);
     vkEndCommandBuffer(cmd);
 
@@ -270,6 +290,7 @@ void Renderer::createLogicalDevice() {
     }
 
     VkPhysicalDeviceFeatures features{};
+	features.largePoints = VK_TRUE;
     VkDeviceCreateInfo ci{};
     ci.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     ci.queueCreateInfoCount = (uint32_t)queueCIs.size();
@@ -406,7 +427,7 @@ void Renderer::createVMAAllocator() {
 void Renderer::createVertexBuffer() {
     VkBufferCreateInfo ci{};
     ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    ci.size = sizeof(vertices[0]) * vertices.size();
+    ci.size = sizeof(vertices[0]) * MAX_ENTITIES;
     ci.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
     ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
@@ -537,7 +558,7 @@ void Renderer::createPipeline() {
 
     VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
     inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
 
     VkViewport viewport{};
     viewport.x = 0; viewport.y = 0;
