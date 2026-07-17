@@ -37,9 +37,9 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(vma)
 
 # Physics Engine
-set(PHYSICS_ENGINE_PATH  "D:/THE_ENGINE"            CACHE PATH "Path to physics engine")
-set(SHARED_SHADERS_PATH  "D:/SHADERS/basic"         CACHE PATH "Path to shared shaders")
-set(SCENES_PATH          "D:/THE_RENDERER_SCENES"   CACHE PATH "Path to shared scenes")
+set(PHYSICS_ENGINE_PATH  "D:/Path to physics engine"        CACHE PATH "Path to physics engine")
+set(SHARED_SHADERS_PATH  "D:/Path to shaders"               CACHE PATH "Path to shared shaders")
+set(SCENES_PATH          "D:/Path to scenes"                CACHE PATH "Path to shared scenes")
 
 add_subdirectory(${PHYSICS_ENGINE_PATH} ${CMAKE_BINARY_DIR}/physics)
 
