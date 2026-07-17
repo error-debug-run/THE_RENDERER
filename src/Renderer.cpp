@@ -529,8 +529,8 @@ void Renderer::createDescriptorSetLayout() {
 }
 
 void Renderer::createPipeline() {
-    auto vertCode = readFile("triangle.vert.spv");
-    auto fragCode = readFile("triangle.frag.spv");
+    auto vertCode = readFile(std::string(SHADER_PATH) + "/" + "triangle.vert.spv");
+    auto fragCode = readFile(std::string(SHADER_PATH) + "/" + "triangle.frag.spv");
     VkShaderModule vertModule = createShaderModule(vertCode);
     VkShaderModule fragModule = createShaderModule(fragCode);
 

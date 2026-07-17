@@ -37,11 +37,18 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(vma)
 
 # Physics Engine
-set(PHYSICS_ENGINE_PATH "D:/THE_ENGINE" CACHE PATH "D:/THE_RENDERER")
+set(PHYSICS_ENGINE_PATH  "D:/THE_ENGINE"            CACHE PATH "Path to physics engine")
+set(SHARED_SHADERS_PATH  "D:/SHADERS/basic"         CACHE PATH "Path to shared shaders")
+set(SCENES_PATH          "D:/THE_RENDERER_SCENES"   CACHE PATH "Path to shared scenes")
+
 add_subdirectory(${PHYSICS_ENGINE_PATH} ${CMAKE_BINARY_DIR}/physics)
 
+
 # Executable
-add_executable(THE_RENDERER main.cpp "src/BVH.h" "src/BVH.cpp" "src/Renderer.h" "src/Renderer.cpp" "src/Camera.h" "src/Entity.h" "src/Scene.h" "src/IDRegistry.h" "src/PhysicsInterface.h")
+add_executable(THE_RENDERER main.cpp "src/BVH.h" "src/BVH.cpp" "src/Renderer.h" "src/Renderer.cpp" "src/Camera.h" "src/Entity.h" "src/Scene.h" "src/IDRegistry.h" "src/PhysicsInterface.h" "src/INITIALIZER/OBJECTS/objects.h")
+
+target_compile_definitions(THE_RENDERER PRIVATE PHYSICS_ENGINE_PATH="${PHYSICS_ENGINE_PATH}" SHADER_PATH="${SHARED_SHADERS_PATH}" SCENES_PATH="${SCENES_PATH}")
+
 
 target_include_directories(THE_RENDERER PRIVATE
         ${Vulkan_INCLUDE_DIRS}
@@ -54,9 +61,9 @@ target_include_directories(THE_RENDERER PRIVATE
 find_program(GLSLC glslc HINTS D:/Vulkan/Bin)
 
 file(GLOB_RECURSE GLSL_FILES
-    ${CMAKE_SOURCE_DIR}/shaders/*.vert
-    ${CMAKE_SOURCE_DIR}/shaders/*.frag
-    ${CMAKE_SOURCE_DIR}/shaders/*.comp
+    "${SHARED_SHADERS_PATH}/*.vert"
+    "${SHARED_SHADERS_PATH}/*.frag"
+    "${SHARED_SHADERS_PATH}/*.comp"
 )
 
 foreach(GLSL ${GLSL_FILES})
@@ -73,10 +80,20 @@ endforeach()
 add_custom_target(Shaders DEPENDS ${SPIRV_BINARY_FILES})
 add_dependencies(THE_RENDERER Shaders)
 
+
+# THESE ONES ARE SPECIFICALLY FOR THE SHADERS
 add_custom_command(TARGET THE_RENDERER POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${SPIRV_BINARY_FILES}
         $<TARGET_FILE_DIR:THE_RENDERER>
+)
+
+#THESE ARE FOR THE SCF FILES (SCENE FILES)
+add_custom_command( TARGET THE_RENDERER POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${SCENES_PATH}
+        $<TARGET_FILE_DIR:THE_RENDERER>
+
 )
 
 target_link_libraries(THE_RENDERER PRIVATE
@@ -88,3 +105,7 @@ target_link_libraries(THE_RENDERER PRIVATE
 )
 
 target_compile_features(THE_RENDERER PRIVATE cxx_std_20)
+
+
+
+set(SPIRV ${CMAKE_BINARY_DIR}/$FILE_NAME.spv)

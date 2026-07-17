@@ -5,7 +5,8 @@
 #include "IDRegistry.h"
 #include <vector>
 #include <atomic>
-
+#include "physics/world.h"
+#include "physics/2D_BODY.h"
 
 
 struct BodyState{
@@ -20,6 +21,8 @@ struct BodyState{
 	float r = 1.0f;
 	float g = 1.0f;
 	float b = 1.0f;
+
+	std::vector<Body::TrailPoint> trail;
 
 };
 
